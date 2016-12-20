@@ -9,7 +9,6 @@
 import Foundation
 import CoreLocation
 import AVFoundation
-import CoreBluetooth
 import CoreMotion
 
 /**
@@ -42,10 +41,6 @@ public typealias requestPermissionShowAlert     = (PermissionType) -> Void
 
 @objc public class MicrophonePermission: NSObject, Permission {
     public let type: PermissionType = .Microphone
-}
-
-@objc public class BluetoothPermission: NSObject, Permission {
-    public let type: PermissionType = .Bluetooth
 }
 
 @objc public class MotionPermission: NSObject, Permission {

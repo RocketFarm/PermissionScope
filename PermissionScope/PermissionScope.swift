@@ -9,7 +9,6 @@
 import UIKit
 import CoreLocation
 import AVFoundation
-import CoreBluetooth
 import CoreMotion
 
 public typealias statusRequestClosure = (status: PermissionStatus) -> Void
@@ -17,7 +16,7 @@ public typealias authClosureType      = (finished: Bool, results: [PermissionRes
 public typealias cancelClosureType    = (results: [PermissionResult]) -> Void
 typealias resultsForConfigClosure     = ([PermissionResult]) -> Void
 
-@objc public class PermissionScope: UIViewController, CLLocationManagerDelegate, UIGestureRecognizerDelegate, CBPeripheralManagerDelegate {
+@objc public class PermissionScope: UIViewController, CLLocationManagerDelegate, UIGestureRecognizerDelegate {
 
     // MARK: UI Parameters
     
@@ -63,10 +62,6 @@ typealias resultsForConfigClosure     = ([PermissionResult]) -> Void
         return lm
     }()
 
-    lazy var bluetoothManager:CBPeripheralManager = {
-        return CBPeripheralManager(delegate: self, queue: nil, options:[CBPeripheralManagerOptionShowPowerAlertKey: false])
-    }()
-    
     lazy var motionManager:CMMotionActivityManager = {
         return CMMotionActivityManager()
     }()
@@ -303,9 +298,7 @@ typealias resultsForConfigClosure     = ([PermissionResult]) -> Void
         configuredPermissions.append(permission)
         permissionMessages[permission.type] = message
         
-        if permission.type == .Bluetooth && askedBluetooth {
-            triggerBluetoothStatusUpdate()
-        } else if permission.type == .Motion && askedMotion {
+        if permission.type == .Motion && askedMotion {
             triggerMotionStatusUpdate()
         }
     }
@@ -631,80 +624,6 @@ typealias resultsForConfigClosure     = ([PermissionResult]) -> Void
         }
     }
     
-    // MARK: Bluetooth
-    
-    /// Returns whether Bluetooth access was asked before or not.
-    private var askedBluetooth:Bool {
-        get {
-            return defaults.boolForKey(Constants.NSUserDefaultsKeys.requestedBluetooth)
-        }
-        set {
-            defaults.setBool(newValue, forKey: Constants.NSUserDefaultsKeys.requestedBluetooth)
-            defaults.synchronize()
-        }
-    }
-    
-    /// Returns whether PermissionScope is waiting for the user to enable/disable bluetooth access or not.
-    private var waitingForBluetooth = false
-    
-    /**
-    Returns the current permission status for accessing Bluetooth.
-    
-    - returns: Permission status for the requested type.
-    */
-    public func statusBluetooth() -> PermissionStatus {
-        // if already asked for bluetooth before, do a request to get status, else wait for user to request
-        if askedBluetooth{
-            triggerBluetoothStatusUpdate()
-        } else {
-            return .Unknown
-        }
-        
-        let state = (bluetoothManager.state, CBPeripheralManager.authorizationStatus())
-        switch state {
-        case (.Unsupported, _), (.PoweredOff, _), (_, .Restricted):
-            return .Disabled
-        case (.Unauthorized, _), (_, .Denied):
-            return .Unauthorized
-        case (.PoweredOn, .Authorized):
-            return .Authorized
-        default:
-            return .Unknown
-        }
-        
-    }
-    
-    /**
-    Requests access to Bluetooth, if necessary.
-    */
-    public func requestBluetooth() {
-        let status = statusBluetooth()
-        switch status {
-        case .Disabled:
-            showDisabledAlert(.Bluetooth)
-        case .Unauthorized:
-            showDeniedAlert(.Bluetooth)
-        case .Unknown:
-            triggerBluetoothStatusUpdate()
-        default:
-            break
-        }
-        
-    }
-    
-    /**
-    Start and immediately stop bluetooth advertising to trigger
-    its permission dialog.
-    */
-    private func triggerBluetoothStatusUpdate() {
-        if !waitingForBluetooth && bluetoothManager.state == .Unknown {
-            bluetoothManager.startAdvertising(nil)
-            bluetoothManager.stopAdvertising()
-            askedBluetooth = true
-            waitingForBluetooth = true
-        }
-    }
-    
     // MARK: Core Motion Activity
     
     /**
@@ -792,7 +711,7 @@ typealias resultsForConfigClosure     = ([PermissionResult]) -> Void
         onCancel = cancelled
         
         dispatch_async(dispatch_get_main_queue()) {
-            while self.waitingForBluetooth || self.waitingForMotion { }
+            while self.waitingForMotion { }
             // call other methods that need to wait before show
             // no missing required perms? callback and do nothing
             self.requiredAuthorized({ areAuthorized in
@@ -896,13 +815,6 @@ typealias resultsForConfigClosure     = ([PermissionResult]) -> Void
         detectAndCallback()
     }
     
-    // MARK: Bluetooth delegate
-    
-    public func peripheralManagerDidUpdateState(peripheral: CBPeripheralManager) {
-        waitingForBluetooth = false
-        detectAndCallback()
-    }
-
     // MARK: - UI Helpers
     
     /**
@@ -1018,8 +930,6 @@ typealias resultsForConfigClosure     = ([PermissionResult]) -> Void
             permissionStatus = statusNotifications()
         case .Microphone:
             permissionStatus = statusMicrophone()
-        case .Bluetooth:
-            permissionStatus = statusBluetooth()
         case .Motion:
             permissionStatus = statusMotion()
         }
